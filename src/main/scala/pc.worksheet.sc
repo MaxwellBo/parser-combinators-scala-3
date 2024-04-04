@@ -272,19 +272,6 @@ def surrounded[A](open: String)(m: Parser[A])(close: String): Parser[A] = for {
   _ <- reserved(close)
 } yield n
 
-/**
- * And that's about it! In a few hundred lines we have enough of a parser
- * library to write down a simple parser for a calculator grammar. In the
- * formal Backus–Naur Form our grammar would be written as:
- *
- * number ::= [ "-" ] digit { digit }.
- * digit  ::= "0" | "1" | ... | "8" | "9".
- * expr   ::= term { addop term }.
- * term   ::= factor { mulop factor }.
- * factor ::= "(" expr ")" | number.
- * addop  ::= "+" | "-".
- * mulop  ::= "*".
- */
 
 /**
  * `chainl1` parses one or more occurrences of p, separated by op and
@@ -318,6 +305,18 @@ val op: Parser[Int => Int => Int] = char('+').map(_ => (x: Int) => (y: Int) => x
 chainl(number)(op)(0).parse("1+2+3")
 
 /**
+ * And that's about it! In a few hundred lines we have enough of a parser
+ * library to write down a simple parser for a calculator grammar. In the
+ * formal Backus–Naur Form our grammar would be written as:
+ *
+ * number ::= [ "-" ] digit { digit }.
+ * digit  ::= "0" | "1" | ... | "8" | "9".
+ * expr   ::= term { addop term }.
+ * term   ::= factor { mulop factor }.
+ * factor ::= "(" expr ")" | number.
+ * addop  ::= "+" | "-".
+ * mulop  ::= "*".
+ *
  * The direct translation to Scala in terms of our newly constructed parser
  * combinator has the following form:
  */
@@ -370,3 +369,32 @@ object Calculator {
 
 Calculator("1 + 1") // 2
 Calculator("(2 * (1 + 2) * (3 - (-4 + 5)))")  // 12
+
+/**
+ * <Json> ::= <Object>
+ *         | <Array>
+ *
+ * <Object> ::= '{' '}'
+ *            | '{' <Members> '}'
+ *
+ * <Members> ::= <Pair>
+ *             | <Pair> ',' <Members>
+ *
+ * <Pair> ::= String ':' <Value>
+ *
+ * <Array> ::= '[' ']'
+ *           | '[' <Elements> ']'
+ *
+ * <Elements> ::= <Value>
+ *              | <Value> ',' <Elements>
+ *
+ * <Value> ::= String
+ *           | Number
+ *           | <Object>
+ *           | <Array>
+ *           | true
+ *           | false
+ *           | null
+ */
+object Json:
+  ???

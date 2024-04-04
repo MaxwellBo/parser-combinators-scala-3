@@ -216,6 +216,7 @@ object Alternative:
    * point.
    */
   def many[F[_]: Functor: Alternative: Applicative, A](v: => F[A]): F[List[A]] =
+    // ^ dodgy signature
     some(v).orElse(summon[Applicative[F]].pure(List.empty[A]))
 
   /**
@@ -248,6 +249,7 @@ def alpha: Parser[String] =
 
 
 def token[A](p: Parser[A]): Parser[A] = for {
+  _ <- spaces
   a <- p
   _ <- spaces
 } yield a
@@ -338,7 +340,7 @@ object Calculator {
   } yield Lit(n)
 
   def expr: Parser[Expr] =
-    chainl1(term)(addop)
+    token(chainl1(term)(addop))
 
   def term: Parser[Expr] =
     chainl1(factor)(mulop)
@@ -366,5 +368,5 @@ object Calculator {
 
 // Now we can try out our little parser.
 
-Calculator("1+1") // 2
-Calculator("(2*(1+2)*(3-(-4+5)))")  // 12
+Calculator("1 + 1") // 2
+Calculator("(2 * (1 + 2) * (3 - (-4 + 5)))")  // 12

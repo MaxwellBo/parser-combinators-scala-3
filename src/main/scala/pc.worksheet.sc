@@ -1,3 +1,47 @@
+// prelude
+
+trait Functor[F[_]]:
+  extension [A](fa: F[A])
+    def map[B](f: A => B): F[B]
+
+trait Applicative[F[_]: Functor]:
+  def pure[A](a: A): F[A]
+  extension [A, B](fa: F[A => B])
+    def ap(f: => F[A]): F[B]
+    //        ^ lazily evaluated
+
+trait Monad[F[_]: Applicative]:
+  extension [A](fa: F[A])
+    def flatMap[B](f: A => F[B]): F[B]
+
+trait Alternative[F[_]: Applicative]:
+  def empty[A]: F[A]
+  extension [A](fa: F[A])
+    def orElse(fa2: => F[A]): F[A]
+
+object Alternative:
+  /**
+   * `many` takes a single function argument and repeatedly applies it until
+   * the function fails and then yields the collected results up to that
+   * point.
+   */
+  def many[F[_]: Functor: Alternative: Applicative, A](v: => F[A]): F[List[A]] =
+  // ^ dodgy signature
+    some(v).orElse(summon[Applicative[F]].pure(List.empty[A]))
+
+  /**
+   * The `some` function behaves similar except that it will fail itself if
+   * there is not at least a single match.
+   */
+  def some[F[_]: Functor: Alternative: Applicative, A](v: => F[A]): F[List[A]] =
+    def prepend: A => List[A] => List[A] = (x: A) => (xs: List[A]) =>
+      xs.prepended(x)
+
+    lazy val m: F[List[A]] = many(v)
+
+    v.map(prepend).ap(m)
+
+///////////////////////////////////////////////////////////////////////////////
 
 /**
  * Structurally a parser is a function which takes an input stream of
@@ -72,18 +116,6 @@ def option[A](pa: Parser[A], qa: => Parser[A]): Parser[A] =
 
 option(failure, item).parse("ABC")
 
-trait Functor[F[_]]:
-  extension [A](fa: F[A])
-    def map[B](f: A => B): F[B]
-
-trait Applicative[F[_]]:
-  def pure[A](a: A): F[A]
-  extension [A, B](fa: F[A => B])
-    def ap(f: => F[A]): F[B]
-
-trait Monad[F[_]]:
-  extension [A](fa: F[A])
-    def flatMap[B](f: A => F[B]): F[B]
 
 given Functor[Parser] with
   extension [A](fa: Parser[A])
@@ -125,28 +157,6 @@ given Monad[Parser] with
         }
       }
 
-val parseASCIICode: Parser[Int] = item.map(_.toInt)
-
-parseASCIICode.parse("ABC")
-
-parseASCIICode
-  .map((a: Int) => (b: Int) => a + b)
-  .ap(parseASCIICode)
-  .parse("ABC")
-
-parseASCIICode.flatMap { a =>
-  parseASCIICode.map { b =>
-    a + b
-  }
-}.parse("ABC")
-
-val go = for {
-  a <- parseASCIICode
-  b <- parseASCIICode
-} yield a + b
-
-go.parse("ABC")
-
 /**
  * On top of this we can add functionality for checking whether the current
  * character in the stream matches a given predicate ( i.e is it a digit,
@@ -163,9 +173,6 @@ def satisfy(p: Char => Boolean): Parser[Char] =
 def digit: Parser[Char] =
   satisfy(_.isDigit)
 
-digit.parse("000")
-digit.parse("OOO")
-
 /**
  * Using satisfy we can write down several combinators for detecting the
  * presence of specific common patterns of characters (numbers,
@@ -174,8 +181,6 @@ digit.parse("OOO")
 def char(c: Char): Parser[Char] =
   satisfy(_ == c)
 
-char('A').parse("ABC")
-char('A').parse("FFF")
 
 /**
  * Essentially this 50 lines code encodes the entire core of the parser
@@ -204,32 +209,6 @@ string("foo").parse("bar")
 /**
  * A monoid on applicative functors.
  */
-trait Alternative[F[_]]:
-  def empty[A]: F[A]
-  extension [A](fa: F[A])
-    def orElse(fa2: => F[A]): F[A]
-
-object Alternative:
-  /**
-   * `many` takes a single function argument and repeatedly applies it until
-   * the function fails and then yields the collected results up to that
-   * point.
-   */
-  def many[F[_]: Functor: Alternative: Applicative, A](v: => F[A]): F[List[A]] =
-    // ^ dodgy signature
-    some(v).orElse(summon[Applicative[F]].pure(List.empty[A]))
-
-  /**
-   * The `some` function behaves similar except that it will fail itself if
-   * there is not at least a single match.
-   */
-  def some[F[_]: Functor: Alternative: Applicative, A](v: => F[A]): F[List[A]] =
-    def prepend: A => List[A] => List[A] = (x: A) => (xs: List[A]) =>
-      xs.prepended(x)
-
-    lazy val m: F[List[A]] = many(v)
-
-    v.map(prepend).ap(m)
 
 given Alternative[Parser] with
   def empty[A]: Parser[A] =
@@ -257,7 +236,6 @@ def token[A](p: Parser[A]): Parser[A] = for {
 def reserved(s: String): Parser[String] =
   token(string(s))
 
-
 def natural: Parser[Int] =
   Alternative.some(digit).map(_.mkString.toInt)
 
@@ -271,7 +249,6 @@ def surrounded[A](open: String)(m: Parser[A])(close: String): Parser[A] = for {
   n <- m
   _ <- reserved(close)
 } yield n
-
 
 /**
  * `chainl1` parses one or more occurrences of p, separated by op and

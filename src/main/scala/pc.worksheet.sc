@@ -10,6 +10,10 @@ trait Applicative[F[_]: Functor]:
     def ap(f: => F[A]): F[B]
     //        ^ lazily evaluated
 
+object Applicative:
+  def pure[F[_]: Applicative, A](a: A): F[A] =
+    summon[Applicative[F]].pure(a)
+
 trait Monad[F[_]: Applicative]:
   extension [A](fa: F[A])
     def flatMap[B](f: A => F[B]): F[B]
@@ -20,6 +24,9 @@ trait Alternative[F[_]: Applicative]:
     def orElse(fa2: => F[A]): F[A]
 
 object Alternative:
+  def empty[F[_]: Alternative, A]: F[A] =
+    summon[Alternative[F]].empty
+
   /**
    * `many` takes a single function argument and repeatedly applies it until
    * the function fails and then yields the collected results up to that
@@ -165,7 +172,7 @@ given Monad[Parser] with
 def satisfy(p: Char => Boolean): Parser[Char] =
   item.flatMap { c =>
     if (p(c))
-      unit(c)
+      Applicative.pure(c)
     else
       failure
   }
@@ -196,7 +203,7 @@ oneOf("ABC".toList).parse("DBC")
 
 def string(ccs: String): Parser[String] =
   ccs match {
-    case "" => unit("")
+    case "" => Applicative.pure("")
     case cs => for {
       _ <- char(cs.head)
       _ <- string(cs.tail)
@@ -262,7 +269,7 @@ def chainl1[A](p: Parser[A])(op: Parser[A => A => A]): Parser[A] = {
     f <- op
     b <- p
     res <- rest(f(a)(b))
-  } yield res).orElse(unit(a))
+  } yield res).orElse(Applicative.pure(a))
 
   for {
     a <- p

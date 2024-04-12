@@ -14,9 +14,11 @@ object Applicative:
   def pure[F[_]: Applicative, A](a: A): F[A] =
     summon[Applicative[F]].pure(a)
 
+
 trait Monad[F[_]: Applicative]:
   extension [A](fa: F[A])
     def flatMap[B](f: A => F[B]): F[B]
+
 
 trait Alternative[F[_]: Applicative]:
   def empty[A]: F[A]
@@ -225,19 +227,19 @@ given Alternative[Parser] with
     def orElse(fa2: => Parser[A]): Parser[A] =
       option(fa, fa2)
 
-def spaces: Parser[String] =
+def ws: Parser[String] =
   Alternative.many(oneOf(" \n\r".toList)).map(_.mkString)
 
-spaces.parse("    A")
+ws.parse("    A")
 
-def alpha: Parser[String] =
+def alphanumeric: Parser[String] =
   Alternative.many(satisfy(_.isLetterOrDigit)).map(_.mkString)
 
 
 def token[A](p: Parser[A]): Parser[A] = for {
-  _ <- spaces
+  _ <- ws
   a <- p
-  _ <- spaces
+  _ <- ws
 } yield a
 
 def reserved(s: String): Parser[String] =
@@ -246,7 +248,7 @@ def reserved(s: String): Parser[String] =
 def natural: Parser[Int] =
   Alternative.some(digit).map(_.mkString.toInt)
 
-def number: Parser[Int] = for {
+def natural: Parser[Int] = for {
   s <- string("-").orElse(string(""))
   cs <- Alternative.some(digit)
 } yield (s + cs.mkString).toInt
@@ -286,7 +288,105 @@ def chainl[A](p: Parser[A])(op: Parser[A => A => A])(a: A): Parser[A] =
 
 val op: Parser[Int => Int => Int] = char('+').map(_ => (x: Int) => (y: Int) => x + y)
 
-chainl(number)(op)(0).parse("1+2+3")
+chainl(natural)(op)(0).parse("1+2+3")
+
+
+/**
+ * Here's the EBNF of a simplified JSON derived from https://www.json.org/json-en.html:
+ * 
+ * <Json> ::= <Element>
+ * 
+ * <Value> ::= <Object>
+ *           | <Array>
+ *           | <String>
+ *           | <Number>
+ *           | 'true'
+ *           | 'false'
+ *           | 'null'
+ *
+ * <Object> ::= '{' <WS> '}'
+ *            | '{' <Members> '}'
+ *
+ * <Members> ::= <Member>
+ *             | <Member> ',' <Members>
+ * 
+ * <Member> ::= <WS> <String> <WS> ':' <Element>
+ * 
+ * <Array> ::= '[' <WS> ']'
+ *           | '[' <Elements> ']'
+ *
+ * <Elements> ::= <Element>
+ *              | <Value> ',' <Elements>
+ * 
+ * <Element> :== <WS> <Value> <WS>
+ * 
+ * ... and some more stuff about how numbers are parsed, but that's boring.
+ * 
+ * The direct translation to Scala in terms of our newly constructed parser
+ * combinator has the following form:
+ */
+
+enum Json:
+  case JString(s: String)
+  case JNumber(n: Number)
+  case JObject(obj: Map[String, Json])
+  case JArray(arr: List[Json])
+  case JTrue
+  case JFalse
+  case JNull
+
+def parse(s: String): Either[String, Json.JArray | Json.JObject] =
+  json.run(s)
+
+def json: Parser[Json] = element
+
+def element: Parser[Json] = token(value)
+
+def value: Parser[Json] =
+  `object`
+    .orElse(array)
+    .orElse(string)
+    .orElse(jnumber)
+    .orElse(`true`)
+    .orElse(`false`)
+    .orElse(`null`)
+  
+def `object`: Parser[Json] = surrounded("{")(members)("}").map(Json.JObject.apply)
+
+def members: Parser[Map[String, Json]] = 
+  val `,`: Parser[Map[String, Json] => Map[String, Json] => Map[String, Json]] =
+    reserved(",").map(_ => (x) => (y) => x ++ y)
+  
+  chainl(member)(`,`)(Map.empty)
+
+def member: Parser[Map[String, Json]] = for {
+    _ <- ws
+    key <- surrounded("\"")(alphanumeric)("\"")
+    _ <- ws
+    _ <- reserved(":")
+    _ <- ws
+    value <- element
+  } yield Map(key -> value)
+
+def array: Parser[Json] = surrounded("[")(elements)("]").map(Json.JArray.apply)
+
+def elements: Parser[List[Json]] = 
+  val `,`: Parser[List[Json] => List[Json] => List[Json]] =
+    reserved(",").map(_ => (x) => (y) => x ++ y)
+  
+  chainl1(element.map(List.apply))(`,`)(List.empty)
+
+def element: Parser[Json] = token(value)
+
+def string: Parser[Json] = surrounded("\"")(alphanumeric)("\"").map(Json.JString.apply)
+
+def number: Parser[Json] = natural.map(Json.JNumber.apply)
+
+def `true`: Parser[Json] = reserved("true").map(_ => Json.JTrue)
+
+def `false`: Parser[Json] = reserved("false").map(_ => Json.JFalse)
+
+def `null`: Parser[Json] = reserved("null").map(_ => Json.JNull)
 
 /**
  * And that's about it! In a few hundred lines we have enough of a parser
@@ -319,7 +419,7 @@ object Calculator {
   }
 
   def int: Parser[Expr] = for {
-    n <- number
+    n <- natural
   } yield Lit(n)
 
   def expr: Parser[Expr] =
@@ -353,32 +453,3 @@ object Calculator {
 
 Calculator("1 + 1") // 2
 Calculator("(2 * (1 + 2) * (3 - (-4 + 5)))")  // 12
-
-/**
- * <Json> ::= <Object>
- *         | <Array>
- *
- * <Object> ::= '{' '}'
- *            | '{' <Members> '}'
- *
- * <Members> ::= <Pair>
- *             | <Pair> ',' <Members>
- *
- * <Pair> ::= String ':' <Value>
- *
- * <Array> ::= '[' ']'
- *           | '[' <Elements> ']'
- *
- * <Elements> ::= <Value>
- *              | <Value> ',' <Elements>
- *
- * <Value> ::= String
- *           | Number
- *           | <Object>
- *           | <Array>
- *           | true
- *           | false
- *           | null
- */
-object Json:
-  ???

@@ -321,7 +321,7 @@ chainl(number)(op)(0).parse("1+2+3")
  * <Elements> ::= <Element>
  *              | <Value> ',' <Elements>
  * 
- * <Element> :== <WS> <Value> <WS>
+ * <Element> ::= <WS> <Value> <WS>
  * 
  * We're going to ignore some of the complexities associated with how numbers / escape characters are parsed.
  * 
@@ -400,7 +400,7 @@ object JsonParser:
     chainl(element.map(List.apply(_)))(`,`)(List.empty)
 
   /**
-   * <Element> :== <WS> <Value> <WS>
+   * <Element> ::= <WS> <Value> <WS>
    */
   def element: Parser[Json] = token(value)
 

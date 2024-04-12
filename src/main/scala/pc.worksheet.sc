@@ -235,6 +235,7 @@ ws.parse("    A")
 def alphanumeric: Parser[String] =
   Alternative.many(satisfy(_.isLetterOrDigit)).map(_.mkString)
 
+alphanumeric.parse("abc123$%^")
 
 def token[A](p: Parser[A]): Parser[A] = for {
   _ <- ws
@@ -337,8 +338,7 @@ enum Json:
   case JNull
 end Json
 
-object Json:
-
+object JsonParser:
   /**
    * <Json> ::= <Element>
    */
@@ -366,7 +366,7 @@ object Json:
    * * <Object> ::= '{' <WS> '}'
    *              | '{' <Members> '}'
    */
-  def `object`: Parser[Json] = surrounded("{")(members)("}").map(JObject.apply)
+  def `object`: Parser[Json] = surrounded("{")(members)("}").map(Json.JObject.apply)
 
   def members: Parser[Map[String, Json]] =
     val `,`: Parser[Map[String, Json] => Map[String, Json] => Map[String, Json]] =
@@ -378,11 +378,8 @@ object Json:
    *  * <Member> ::= <WS> <String> <WS> ':' <Element>
    */
   def member: Parser[Map[String, Json]] = for {
-      _ <- ws
-      key <- surrounded("\"")(alphanumeric)("\"")
-      _ <- ws
+      key <- token(surrounded("\"")(alphanumeric)("\""))
       _ <- reserved(":")
-      _ <- ws
       value <- element
     } yield Map(key -> value)
 
@@ -390,7 +387,7 @@ object Json:
    * * <Array> ::= '[' <WS> ']'
    *             | '[' <Elements> ']'
    */
-  def array: Parser[Json] = surrounded("[")(elements)("]").map(JArray.apply)
+  def array: Parser[Json] = surrounded("[")(elements)("]").map(Json.JArray.apply)
 
   /**
    * * <Elements> ::= <Element>
@@ -407,21 +404,39 @@ object Json:
    */
   def element: Parser[Json] = token(value)
 
-  def jstring: Parser[Json] = surrounded("\"")(alphanumeric)("\"").map(JString.apply)
+  def jstring: Parser[Json] = surrounded("\"")(alphanumeric)("\"").map(Json.JString.apply)
 
   def jnumber: Parser[Json] = natural.map(Json.JNumber.apply)
 
-  def `true`: Parser[Json] = reserved("true").map(_ => JTrue)
+  def `true`: Parser[Json] = reserved("true").map(_ => Json.JTrue)
 
-  def `false`: Parser[Json] = reserved("false").map(_ => JFalse)
+  def `false`: Parser[Json] = reserved("false").map(_ => Json.JFalse)
 
-  def `null`: Parser[Json] = reserved("null").map(_ => JNull)
-end Json
+  def `null`: Parser[Json] = reserved("null").map(_ => Json.JNull)
+end JsonParser
 
-Json.`false`.parse("null")
+JsonParser.`json`.run("[]")
+JsonParser.`json`.run("[1, 2, 3]")
+JsonParser.`json`.run("[true, false, null]")
+JsonParser.`json`.run("{}")
+JsonParser.`json`.run("{ \"key\": \"value\" }")
+JsonParser.`json`.run(
+  """
+    |{
+    |  "a": {
+    |    "x": true,
+    |    "y": false,
+    |    "z": null
+    |  },
+    |  "b": [
+    |    1,
+    |    "foo"
+    |  ]
+    |}
+    |""".stripMargin)
 
 
-
+///////////////////////////////////////////////////////////////////////////////
 
 /**
  * number ::= [ "-" ] digit { digit }.

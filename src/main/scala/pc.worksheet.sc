@@ -356,8 +356,8 @@ object JsonParser:
   def value: Parser[Json] =
     `object`
       .orElse(array)
-      .orElse(jstring)
-      .orElse(jnumber)
+      .orElse(JsonParser.string)
+      .orElse(JsonParser.number)
       .orElse(`true`)
       .orElse(`false`)
       .orElse(`null`)
@@ -370,7 +370,7 @@ object JsonParser:
 
   def members: Parser[Map[String, Json]] =
     val `,`: Parser[Map[String, Json] => Map[String, Json] => Map[String, Json]] =
-      reserved(",").map(_ => (x) => (y) => x ++ y)
+      reserved(",").map(_ => x => y => x ++ y)
 
     chainl(member)(`,`)(Map.empty)
 
@@ -404,9 +404,9 @@ object JsonParser:
    */
   def element: Parser[Json] = token(value)
 
-  def jstring: Parser[Json] = surrounded("\"")(alphanumeric)("\"").map(Json.JString.apply)
+  def string: Parser[Json] = surrounded("\"")(alphanumeric)("\"").map(Json.JString.apply)
 
-  def jnumber: Parser[Json] = natural.map(Json.JNumber.apply)
+  def number: Parser[Json] = natural.map(Json.JNumber.apply)
 
   def `true`: Parser[Json] = reserved("true").map(_ => Json.JTrue)
 

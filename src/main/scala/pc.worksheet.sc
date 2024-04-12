@@ -248,7 +248,7 @@ def reserved(s: String): Parser[String] =
 def natural: Parser[Int] =
   Alternative.some(digit).map(_.mkString.toInt)
 
-def natural: Parser[Int] = for {
+def number: Parser[Int] = for {
   s <- string("-").orElse(string(""))
   cs <- Alternative.some(digit)
 } yield (s + cs.mkString).toInt
@@ -288,12 +288,14 @@ def chainl[A](p: Parser[A])(op: Parser[A => A => A])(a: A): Parser[A] =
 
 val op: Parser[Int => Int => Int] = char('+').map(_ => (x: Int) => (y: Int) => x + y)
 
-chainl(natural)(op)(0).parse("1+2+3")
+chainl(number)(op)(0).parse("1+2+3")
 
 
 /**
- * Here's the EBNF of a simplified JSON derived from https://www.json.org/json-en.html:
- * 
+ * And that's about it!
+ * In a few hundred lines we have enough of a parser library to write down a simple parser for a JSON grammar.
+ * Deriving our formal EBNF from https://www.json.org/json-en.html (with some simplifications):
+ *
  * <Json> ::= <Element>
  * 
  * <Value> ::= <Object>
@@ -320,10 +322,9 @@ chainl(natural)(op)(0).parse("1+2+3")
  * 
  * <Element> :== <WS> <Value> <WS>
  * 
- * ... and some more stuff about how numbers are parsed, but that's boring.
+ * We're going to ignore some of the complexities associated with how numbers / escape characters are parsed.
  * 
- * The direct translation to Scala in terms of our newly constructed parser
- * combinator has the following form:
+ * The direct translation to Scala is:
  */
 
 enum Json:
@@ -334,65 +335,95 @@ enum Json:
   case JTrue
   case JFalse
   case JNull
+end Json
 
-def parse(s: String): Either[String, Json.JArray | Json.JObject] =
-  json.run(s)
+object Json:
 
-def json: Parser[Json] = element
+  /**
+   * <Json> ::= <Element>
+   */
+  def json: Parser[Json] = element
 
-def element: Parser[Json] = token(value)
+  /**
+   * * <Value> ::= <Object>
+   *           | <Array>
+   *           | <String>
+   *           | <Number>
+   *           | 'true'
+   *           | 'false'
+   *           | 'null'
+   */
+  def value: Parser[Json] =
+    `object`
+      .orElse(array)
+      .orElse(jstring)
+      .orElse(jnumber)
+      .orElse(`true`)
+      .orElse(`false`)
+      .orElse(`null`)
 
-def value: Parser[Json] =
-  `object`
-    .orElse(array)
-    .orElse(string)
-    .orElse(jnumber)
-    .orElse(`true`)
-    .orElse(`false`)
-    .orElse(`null`)
-  
-def `object`: Parser[Json] = surrounded("{")(members)("}").map(Json.JObject.apply)
+  /**
+   * * <Object> ::= '{' <WS> '}'
+   *              | '{' <Members> '}'
+   */
+  def `object`: Parser[Json] = surrounded("{")(members)("}").map(JObject.apply)
 
-def members: Parser[Map[String, Json]] = 
-  val `,`: Parser[Map[String, Json] => Map[String, Json] => Map[String, Json]] =
-    reserved(",").map(_ => (x) => (y) => x ++ y)
-  
-  chainl(member)(`,`)(Map.empty)
+  def members: Parser[Map[String, Json]] =
+    val `,`: Parser[Map[String, Json] => Map[String, Json] => Map[String, Json]] =
+      reserved(",").map(_ => (x) => (y) => x ++ y)
 
-def member: Parser[Map[String, Json]] = for {
-    _ <- ws
-    key <- surrounded("\"")(alphanumeric)("\"")
-    _ <- ws
-    _ <- reserved(":")
-    _ <- ws
-    value <- element
-  } yield Map(key -> value)
+    chainl(member)(`,`)(Map.empty)
 
-def array: Parser[Json] = surrounded("[")(elements)("]").map(Json.JArray.apply)
+  /**
+   *  * <Member> ::= <WS> <String> <WS> ':' <Element>
+   */
+  def member: Parser[Map[String, Json]] = for {
+      _ <- ws
+      key <- surrounded("\"")(alphanumeric)("\"")
+      _ <- ws
+      _ <- reserved(":")
+      _ <- ws
+      value <- element
+    } yield Map(key -> value)
 
-def elements: Parser[List[Json]] = 
-  val `,`: Parser[List[Json] => List[Json] => List[Json]] =
-    reserved(",").map(_ => (x) => (y) => x ++ y)
-  
-  chainl1(element.map(List.apply))(`,`)(List.empty)
+  /**
+   * * <Array> ::= '[' <WS> ']'
+   *             | '[' <Elements> ']'
+   */
+  def array: Parser[Json] = surrounded("[")(elements)("]").map(JArray.apply)
 
-def element: Parser[Json] = token(value)
+  /**
+   * * <Elements> ::= <Element>
+   *                | <Value> ',' <Elements>
+   */
+  def elements: Parser[List[Json]] =
+    val `,`: Parser[List[Json] => List[Json] => List[Json]] =
+      reserved(",").map(_ => x => y => x ++ y)
 
-def string: Parser[Json] = surrounded("\"")(alphanumeric)("\"").map(Json.JString.apply)
+    chainl(element.map(List.apply(_)))(`,`)(List.empty)
 
-def number: Parser[Json] = natural.map(Json.JNumber.apply)
+  /**
+   * <Element> :== <WS> <Value> <WS>
+   */
+  def element: Parser[Json] = token(value)
 
-def `true`: Parser[Json] = reserved("true").map(_ => Json.JTrue)
+  def jstring: Parser[Json] = surrounded("\"")(alphanumeric)("\"").map(JString.apply)
 
-def `false`: Parser[Json] = reserved("false").map(_ => Json.JFalse)
+  def jnumber: Parser[Json] = natural.map(Json.JNumber.apply)
 
-def `null`: Parser[Json] = reserved("null").map(_ => Json.JNull)
+  def `true`: Parser[Json] = reserved("true").map(_ => JTrue)
+
+  def `false`: Parser[Json] = reserved("false").map(_ => JFalse)
+
+  def `null`: Parser[Json] = reserved("null").map(_ => JNull)
+end Json
+
+Json.`false`.parse("null")
+
+
+
 
 /**
- * And that's about it! In a few hundred lines we have enough of a parser
- * library to write down a simple parser for a calculator grammar. In the
- * formal Backus–Naur Form our grammar would be written as:
- *
  * number ::= [ "-" ] digit { digit }.
  * digit  ::= "0" | "1" | ... | "8" | "9".
  * expr   ::= term { addop term }.
@@ -400,9 +431,6 @@ def `null`: Parser[Json] = reserved("null").map(_ => Json.JNull)
  * factor ::= "(" expr ")" | number.
  * addop  ::= "+" | "-".
  * mulop  ::= "*".
- *
- * The direct translation to Scala in terms of our newly constructed parser
- * combinator has the following form:
  */
 object Calculator {
   sealed trait Expr
@@ -419,7 +447,7 @@ object Calculator {
   }
 
   def int: Parser[Expr] = for {
-    n <- natural
+    n <- number
   } yield Lit(n)
 
   def expr: Parser[Expr] =

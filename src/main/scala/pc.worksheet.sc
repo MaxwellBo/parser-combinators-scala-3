@@ -7,8 +7,8 @@ trait Functor[F[_]]:
 trait Applicative[F[_]: Functor]:
   def pure[A](a: A): F[A]
   extension [A, B](fa: F[A => B])
-    def ap(f: => F[A]): F[B]
-    //        ^ lazily evaluated
+    def ap(ff: => F[A]): F[B]
+    //         ^ lazily evaluated
 
 object Applicative:
   def pure[F[_]: Applicative, A](a: A): F[A] =
@@ -17,13 +17,14 @@ object Applicative:
 
 trait Monad[F[_]: Applicative]:
   extension [A](fa: F[A])
-    def flatMap[B](f: A => F[B]): F[B]
+    def flatMap[B](afb: A => F[B]): F[B]
 
 
 trait Alternative[F[_]: Applicative]:
   def empty[A]: F[A]
-  extension [A](fa: F[A])
+  extension [A](fa1: F[A])
     def orElse(fa2: => F[A]): F[A]
+    //              ^ lazily evaluated
 
 object Alternative:
   def empty[F[_]: Alternative, A]: F[A] =
@@ -141,11 +142,11 @@ given Applicative[Parser] with
 
   extension[A, B] (ff: Parser[A => B])
     def ap(fa: => Parser[A]): Parser[B] =
-      Parser { s =>
+      Parser { s1 =>
         for {
-          (f, s1) <- ff.parse(s) // consume some of the stream
-          (a, s2) <- fa.parse(s1) // consume some more of the stream
-        } yield (f(a), s2)
+          (f, s2) <- ff.parse(s1) // consume some of the stream
+          (a, s3) <- fa.parse(s2) // consume some more of the stream
+        } yield (f(a), s3)
       }
 
 
@@ -158,10 +159,10 @@ given Monad[Parser] with
      * This allows us to sequence parsers, where a second parser can
      * depend on the result of the first parser.
      */
-    def flatMap[B](f: A => Parser[B]): Parser[B] =
+    def flatMap[B](afb: A => Parser[B]): Parser[B] =
       Parser { s =>
         fa.parse(s).flatMap { case (a: A, s1: String) =>
-          val fb: List[(B, String)] = f(a).parse(s1)
+          val fb: List[(B, String)] = afb(a).parse(s1)
           fb
         }
       }
@@ -243,8 +244,12 @@ def token[A](p: Parser[A]): Parser[A] = for {
   _ <- ws
 } yield a
 
+token(string("abc")).parse("   abc   ")
+
 def reserved(s: String): Parser[String] =
   token(string(s))
+
+reserved("abc").parse("   abc   ")
 
 def natural: Parser[Int] =
   Alternative.some(digit).map(_.mkString.toInt)
@@ -346,12 +351,12 @@ object JsonParser:
 
   /**
    * * <Value> ::= <Object>
-   *           | <Array>
-   *           | <String>
-   *           | <Number>
-   *           | 'true'
-   *           | 'false'
-   *           | 'null'
+   *            | <Array>
+   *            | <String>
+   *            | <Number>
+   *            | 'true'
+   *            | 'false'
+   *            | 'null'
    */
   def value: Parser[Json] =
     `object`
@@ -413,14 +418,16 @@ object JsonParser:
   def `false`: Parser[Json] = reserved("false").map(_ => Json.JFalse)
 
   def `null`: Parser[Json] = reserved("null").map(_ => Json.JNull)
+
+  def parse(s: String) = `json`.run(s)
 end JsonParser
 
-JsonParser.`json`.run("[]")
-JsonParser.`json`.run("[1, -2, 3]")
-JsonParser.`json`.run("[true, false, null]")
-JsonParser.`json`.run("{}")
-JsonParser.`json`.run("{ \"key\": \"value\" }")
-JsonParser.`json`.run(
+JsonParser.parse("[]")
+JsonParser.parse("[1, -2, 3]")
+JsonParser.parse("[true, false, null]")
+JsonParser.parse("{}")
+JsonParser.parse("{ \"key\": \"value\" }")
+JsonParser.parse(
   """
     |{
     |  "a": {
@@ -448,18 +455,14 @@ JsonParser.`json`.run(
  * mulop  ::= "*".
  */
 object Calculator {
-  sealed trait Expr
-  case class Add(a: Expr, b: Expr) extends Expr
-  case class Mul(a: Expr, b: Expr) extends Expr
-  case class Sub(a: Expr, b: Expr) extends Expr
-  case class Lit(n: Int) extends Expr
+  enum Expr:
+    case Add(a: Expr, b: Expr)
+    case Mul(a: Expr, b: Expr)
+    case Sub(a: Expr, b: Expr)
+    case Lit(n: Int)
+  end Expr
 
-  def eval(ex: Expr): Int = ex match {
-    case Add(a, b) => eval(a) + eval(b)
-    case Mul(a, b) => eval(a) * eval(b)
-    case Sub(a, b) => eval(a) - eval(b)
-    case Lit(n) => n
-  }
+  import Expr._
 
   def int: Parser[Expr] = for {
     n <- number
@@ -478,21 +481,31 @@ object Calculator {
     _ <- reserved(x)
   } yield f
 
-  def addop: Parser[Expr => Expr => Expr] = {
+  def addop: Parser[Expr => Expr => Expr] =
     val add: Expr => Expr => Expr = (Add(_, _)).curried
     val sub: Expr => Expr => Expr = (Sub(_, _)).curried
 
     infixOp("+", add).orElse(infixOp("-", sub))
-  }
 
   def mulop: Parser[Expr => Expr => Expr] =
     infixOp("*", (Mul(_, _)).curried)
 
-  def apply(s: String): Either[String, Int] =
+  def parse(s: String): Either[String, Expr] =
+    expr.run(s)
+
+  def eval(s: String): Either[String, Int] =
     expr.run(s).map(eval)
+
+  def eval(ex: Expr): Int = ex match
+    case Add(a, b) => eval(a) + eval(b)
+    case Mul(a, b) => eval(a) * eval(b)
+    case Sub(a, b) => eval(a) - eval(b)
+    case Lit(n) => n
 }
 
 // Now we can try out our little parser.
 
-Calculator("1 + 1") // 2
-Calculator("(2 * (1 + 2) * (3 - (-4 + 5)))")  // 12
+Calculator.parse("1 + 1")
+Calculator.eval("1 + 1") // 2
+Calculator.parse("(2 * (1 + 2) * (3 - (-4 + 5)))")
+Calculator.eval("(2 * (1 + 2) * (3 - (-4 + 5)))") // 12

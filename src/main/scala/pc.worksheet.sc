@@ -1,11 +1,11 @@
 // why am I giving this talk?
 // Core Libraries does a reasonable amount of fiddling with ASTs and parsing:
 // - JSON wire protocol
-// - Binary Protobuf wire protocl
-// - proto ASTs
-// - Error Prone (Java AST)
+// - Binary Protobuf wire protocol
+// - The Protocol Buffers AST
+// - Error Prone (the Java AST)
 // - maybe Semgrep soon??? (general purpose syntactic matching)
-// - maybe CEL soon??? (proto message and field validation expressions)
+// - maybe CEL ASTs soon??? (proto message and field validation expressions)
 //
 // While we have never needed to write our own parsers from scratch...
 // but what if we did? Could we build a rich parsing grammar with very little machinary?
@@ -545,3 +545,8 @@ Calculator.parse("1 + 1")
 Calculator.eval("1 + 1") // 2
 Calculator.parse("(2 * (1 + 2) * (3 - (-4 + 5)))")
 Calculator.eval("(2 * (1 + 2) * (3 - (-4 + 5)))") // 12
+
+
+// https://github.com/com-lihaoyi/fastparse
+// https://github.com/microsoft/ts-parsec
+// https://github.com/rust-bakery/nom

@@ -1,3 +1,15 @@
+// why am I giving this talk?
+// Core Libraries does a reasonable amount of fiddling with ASTs and parsing:
+// - JSON wire protocol
+// - Binary Protobuf wire protocl
+// - proto ASTs
+// - Error Prone (Java AST)
+// - maybe Semgrep soon??? (general purpose syntactic matching)
+// - maybe CEL soon??? (proto message and field validation expressions)
+//
+// While we have never needed to write our own parsers from scratch...
+// but what if we did? Could we build a rich parsing grammar with very little machinary?
+
 // prelude
 
 trait Functor[F[_]]:

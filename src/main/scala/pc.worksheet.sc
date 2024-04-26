@@ -167,6 +167,19 @@ given Monad[Parser] with
         }
       }
 
+val parseASCIICode: Parser[Int] = item.map(_.toInt)
+
+parseASCIICode.parse("A")
+parseASCIICode.map((x: Int) => (y: Int) => x + y).ap(parseASCIICode).parse("AB")
+parseASCIICode.flatMap(x => parseASCIICode.map(y => x + y)).parse("AB")
+// sugared form of ^
+val chained = for {
+  x <- parseASCIICode
+  y <- parseASCIICode
+} yield x + y
+
+chained.parse("AB")
+
 /**
  * On top of this we can add functionality for checking whether the current
  * character in the stream matches a given predicate ( i.e is it a digit,
@@ -183,6 +196,9 @@ def satisfy(p: Char => Boolean): Parser[Char] =
 def digit: Parser[Char] =
   satisfy(_.isDigit)
 
+digit.parse("5")
+digit.parse("A")
+
 /**
  * Using satisfy we can write down several combinators for detecting the
  * presence of specific common patterns of characters (numbers,
@@ -191,6 +207,8 @@ def digit: Parser[Char] =
 def char(c: Char): Parser[Char] =
   satisfy(_ == c)
 
+char('A').parse("A")
+char('B').parse("A")
 
 /**
  * Essentially this 50 lines code encodes the entire core of the parser
@@ -254,16 +272,22 @@ reserved("abc").parse("   abc   ")
 def natural: Parser[Int] =
   Alternative.some(digit).map(_.mkString.toInt)
 
+natural.parse("123A")
+
 def number: Parser[Int] = for {
   s <- string("-").orElse(string(""))
   cs <- Alternative.some(digit)
 } yield (s + cs.mkString).toInt
+
+number.parse("-123A")
 
 def surrounded[A](open: String)(m: Parser[A])(close: String): Parser[A] = for {
   _ <- reserved(open)
   n <- m
   _ <- reserved(close)
 } yield n
+
+surrounded("(")(number)(")").parse("(-123)")
 
 /**
  * `chainl1` parses one or more occurrences of p, separated by op and

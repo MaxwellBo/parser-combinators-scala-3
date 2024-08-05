@@ -1,16 +1,19 @@
-// why am I giving this talk?
-// Core Libraries does a reasonable amount of fiddling with ASTs and parsing:
-// - JSON wire protocol
-// - Binary Protobuf wire protocol
-// - The Protocol Buffers AST
-// - Error Prone (the Java AST)
-// - maybe Semgrep soon??? (general purpose syntactic matching)
-// - maybe CEL ASTs soon??? (proto message and field validation expressions)
-//
-// While we have never needed to write our own parsers from scratch...
-// but what if we did? Could we build a rich parsing grammar with very little machinary?
+// Hi, I'm Max! I'm on the Core Libraries team.
 
-// prelude
+// Housekeeping:
+// 1. This is unashamedly an intermediate level talk.
+//    It will assume knowledge of the standard typeclass hierarchy.
+// 2. Why?
+//    a) Well, Parser is a very uncontroversial Monad.
+//       IO, Option, Either have their fair share of critics (perhaps deservedly so).
+//       But I've never seen someone say "god I hate Parser"
+//    b) I think it's a great example of using functional primitives to build
+//       DX that's greater than the sum of its parts
+//    c) what are we building to? A from-scratch JSON parser of course!
+//       PRESENTER NOTE: CTRL+F "JsonParser.parse("
+//
+// START PRELUDE:
+// I'm just going to define these here rather than pulling in a proper FP library like Cats or Scalaz.
 
 trait Functor[F[_]]:
   extension [A](fa: F[A])
@@ -47,21 +50,23 @@ object Alternative:
    * the function fails and then yields the collected results up to that
    * point.
    */
-  def many[F[_]: Functor: Alternative: Applicative, A](v: => F[A]): F[List[A]] =
-  // ^ dodgy signature
+  def many[F[_]: Alternative: Applicative: Functor, A](v: => F[A]): F[List[A]] =
+    // ^ dodgy signature: ideally this would only extend Alternative
     some(v).orElse(summon[Applicative[F]].pure(List.empty[A]))
 
   /**
    * The `some` function behaves similar except that it will fail itself if
    * there is not at least a single match.
    */
-  def some[F[_]: Functor: Alternative: Applicative, A](v: => F[A]): F[List[A]] =
+  def some[F[_]: Alternative: Applicative: Functor, A](v: => F[A]): F[List[A]] =
     def prepend: A => List[A] => List[A] = (x: A) => (xs: List[A]) =>
       xs.prepended(x)
 
     lazy val m: F[List[A]] = many(v)
 
     v.map(prepend).ap(m)
+
+// END PRELUDE
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -122,21 +127,6 @@ def unit[A](a: A): Parser[A] =
   Parser { s => List((a, s)) }
 
 unit(42).parse("ABC")
-
-/**
- * Together this forms a monoidal structure with a secondary operation
- * (`combine`) which applies two parser functions over the same stream and
- * concatenates the result.
- */
-def option[A](pa: Parser[A], qa: => Parser[A]): Parser[A] =
-  Parser { s =>
-    pa.parse(s) match {
-      case Nil => qa.parse(s)
-      case res => res
-    }
-  }
-
-option(failure, item).parse("ABC")
 
 
 given Functor[Parser] with
@@ -246,10 +236,19 @@ def string(ccs: String): Parser[String] =
 string("foo").parse("foobar")
 string("foo").parse("bar")
 
+def option[A](pa: Parser[A], qa: => Parser[A]): Parser[A] =
+  Parser { s =>
+    pa.parse(s) match {
+      case Nil => qa.parse(s)
+      case res => res
+    }
+  }
+
+option(failure, item).parse("ABC")
+
 /**
  * A monoid on applicative functors.
  */
-
 given Alternative[Parser] with
   def empty[A]: Parser[A] =
     failure[A]

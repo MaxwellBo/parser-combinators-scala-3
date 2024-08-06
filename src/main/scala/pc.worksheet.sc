@@ -164,8 +164,8 @@ given Monad[Parser] with
     def flatMap[B](afb: A => Parser[B]): Parser[B] =
       Parser { s =>
         fa.parse(s).flatMap { case (a: A, s1: String) =>
-          val fb: List[(B, String)] = afb(a).parse(s1)
-          fb
+          val b: List[(B, String)] = afb(a).parse(s1)
+          b
         }
       }
 

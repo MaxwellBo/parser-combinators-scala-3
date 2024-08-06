@@ -51,7 +51,7 @@ object Alternative:
    * point.
    */
   def many[F[_]: Alternative: Applicative: Functor, A](v: => F[A]): F[List[A]] =
-    // ^ dodgy signature: ideally this would only extend Alternative
+    // ^ dodgy signature: ideally this would only extend Applicative
     some(v).orElse(summon[Applicative[F]].pure(List.empty[A]))
 
   /**

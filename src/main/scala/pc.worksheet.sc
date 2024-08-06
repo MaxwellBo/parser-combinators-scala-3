@@ -477,6 +477,12 @@ JsonParser.parse(
     |}
     |""".stripMargin)
 
+// PRODUCTION LIBS YOU SHOULD USE OVER ROLLING YOUR OWN
+// https://github.com/com-lihaoyi/fastparse
+// https://github.com/microsoft/ts-parsec
+// https://hackage.haskell.org/package/parsec
+// https://github.com/rust-bakery/nom
+// https://docs.rs/chumsky/latest/chumsky/index.html
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -545,7 +551,3 @@ Calculator.eval("1 + 1") // 2
 Calculator.parse("(2 * (1 + 2) * (3 - (-4 + 5)))")
 Calculator.eval("(2 * (1 + 2) * (3 - (-4 + 5)))") // 12
 
-
-// https://github.com/com-lihaoyi/fastparse
-// https://github.com/microsoft/ts-parsec
-// https://github.com/rust-bakery/nom
